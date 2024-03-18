@@ -1,0 +1,7 @@
+import { d } from '../../../chunks/index-34a19201.js';
+import { o as o$1 } from '../../../chunks/create-5399fd46.js';
+import { n as n$1 } from '../../../chunks/util-dbc6d9af.js';
+import '../../../chunks/index-a34e90a0.js';
+import '../../../chunks/transframe-provider-e657167f.js';
+
+const n=[];d.onChange((({value:e})=>{n.forEach((t=>t(e)));}));function o(e,t){if(!e)return null;if(t(e))return e;const r=e.return;return r?o(r,t):null}o$1({namespace:"truffle-twitch-injected-api-v1",api:{chatMessagePost:(e,{body:t})=>{if(!t)return !1;const r=document.querySelector('[data-a-target="chat-input"]');if(!r)return !1;const n=o(function(e){const t=Object.keys(e).find((e=>e.startsWith("__reactInternalInstance$")));return t?e[t]:null}(r),(e=>{var t;return null!=(null===(t=e.memoizedProps)||void 0===t?void 0:t.setInputValue)}));n.memoizedProps.value=t,n.memoizedProps.setInputValue(t),n.memoizedProps.onValueUpdate(t);const a=document.querySelector('[data-a-target="chat-send-button"]');return null==a||a.click(),!0}},strictMode:!1});o$1({namespace:"truffle-twitch-injected-privileged-api-v1",api:{webComponentMethod:async(e,{querySelector:t,method:r,args:n})=>{const o=document.querySelector(t);if(!o)throw new Error(`element not found: ${t}`);const a=o;if(!a[r])throw new Error(`method not found: ${r}`);return a[r](...n)}},strictMode:!1,allowedOrigins:["https://app.truffle.vip"]}).registerFrame(n$1(window));

@@ -1,0 +1,86 @@
+{
+   "action": {
+      "default_popup": "legacy/popup/index.html"
+   },
+   "background": {
+      "service_worker": "background.js",
+      "type": "module"
+   },
+   "content_scripts": [ {
+      "all_frames": true,
+      "js": [ "contexts/all/content-script/import-index.js" ],
+      "matches": [ "http://*/*", "https://*/*" ],
+      "run_at": "document_start"
+   }, {
+      "all_frames": true,
+      "js": [ "contexts/privileged/content-script/import-index.js" ],
+      "matches": [ "https://*.truffle.vip/*" ],
+      "run_at": "document_start"
+   }, {
+      "all_frames": true,
+      "js": [ "contexts/twitch/content-script/import-index.js" ],
+      "matches": [ "*://*.twitch.tv/*" ],
+      "run_at": "document_start"
+   }, {
+      "exclude_matches": [ "*://accounts.youtube.com/*", "*://*.youtube.com/live_chat*" ],
+      "js": [ "contexts/youtube/content-script/import-index.js" ],
+      "matches": [ "*://*.youtube.com/*" ],
+      "run_at": "document_start"
+   }, {
+      "all_frames": true,
+      "js": [ "contexts/youtube-chat/content-script/import-index.js" ],
+      "matches": [ "*://*.youtube.com/live_chat*" ],
+      "run_at": "document_start"
+   }, {
+      "exclude_matches": [ "*://studio.youtube.com/live_chat*" ],
+      "js": [ "contexts/youtube-chat/content-script/import-index.js" ],
+      "matches": [ "*://studio.youtube.com/*" ],
+      "run_at": "document_start"
+   }, {
+      "js": [ "contexts/quick-actions/content-script/import-index.js" ],
+      "matches": [ "*://studio.youtube.com/*", "*://dashboard.twitch.tv/*" ],
+      "run_at": "document_start"
+   }, {
+      "all_frames": true,
+      "js": [ "legacy/content/embed/import-index.js" ],
+      "matches": [ "*://*.twitch.tv/*", "*://*.youtube.com/*", "*://*.patreon.com/*", "*://*.ludwig.gg/*" ],
+      "run_at": "document_start"
+   }, {
+      "all_frames": true,
+      "js": [ "legacy/content/twitch/import-index.js" ],
+      "matches": [ "*://*.twitch.tv/*" ],
+      "run_at": "document_start"
+   } ],
+   "description": "Enhance your livestream viewing experience",
+   "devtools_page": "devtools/entry.html",
+   "differential_fingerprint": "1.094a2e68f5d8dd34f1d249cf302ced8f5b21fa264ed01a4361f39054a5e35761",
+   "externally_connectable": {
+      "ids": [ "pmnmpgjfacmjcnfigcmgfipemjpggmeg" ],
+      "matches": [ "*://*.truffle.vip/*" ]
+   },
+   "host_permissions": [ "http://*/*", "https://*/*" ],
+   "icons": {
+      "128": "assets/icon128.png",
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm8aUoSOHJ3CLI88dtHf+dlZJzHVn45gLLDrpP7iy2aoYPLEjQnsFSFu1jbNhbhaA4ilmDtcR5WX7j/8JCAXtrc2JEACg3k9Qgp6l9Z2EN6DWBg2IrwJR69w2/CxXb5HVfJp5Bu342N7Fpvl8uxPRX5S55SUomXVwIuujWQpNDxofhqH+kFtBKfdjDLZ5QPcFAnxRXX5I5BK5MWNdXb64o7hbbHpvXPVXFi/MPCyHHsOsd9P0rjFdj2vOxRDcKeXdQ/VgTV27359GNquoHD4ZtF0VufXvUN4+w9swU7CcKlTaY3D4v+paN0q3LpPRNi30UpWG2uIElxkIz1mbt79JlwIDAQAB",
+   "manifest_version": 3,
+   "name": "Truffle",
+   "permissions": [ "cookies", "storage", "unlimitedStorage", "gcm", "notifications", "declarativeNetRequestWithHostAccess" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "4.4.16",
+   "web_accessible_resources": [ {
+      "matches": [ "http://*/*", "https://*/*" ],
+      "resources": [ "contexts/all/injected-script/index.js", "devtools/index.html", "legacy/injected/embed/index.js" ]
+   }, {
+      "matches": [ "*://*.youtube.com/*" ],
+      "resources": [ "contexts/youtube/injected-script/index.js", "contexts/youtube-chat/injected-script/index.js", "legacy/popup/index.html" ]
+   }, {
+      "matches": [ "*://*.twitch.tv/*" ],
+      "resources": [ "legacy/injected/twitch/index.js", "contexts/twitch/injected-script/index.js" ]
+   }, {
+      "matches": [ "http://*/*", "https://*/*", "https://*.truffle.vip/*", "*://*.twitch.tv/*", "*://*.youtube.com/*", "*://studio.youtube.com/*", "*://dashboard.twitch.tv/*", "*://*.patreon.com/*", "*://*.ludwig.gg/*" ],
+      "resources": [ "chunks/*-*.js", "contexts/all/content-script/index.js", "contexts/privileged/content-script/index.js", "contexts/twitch/content-script/index.js", "contexts/youtube/content-script/index.js", "contexts/youtube-chat/content-script/index.js", "contexts/quick-actions/content-script/index.js", "legacy/content/embed/index.js", "legacy/content/twitch/index.js" ]
+   } ]
+}

@@ -1,0 +1,5 @@
+import { n as n$1 } from './index-41475b1d.js';
+
+var t={exports:{}},r={},o=n$1.exports,n=Symbol.for("react.element"),s=Symbol.for("react.fragment"),a=Object.prototype.hasOwnProperty,d=o.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED.ReactCurrentOwner,f={key:!0,ref:!0,__self:!0,__source:!0};function i(e,t,r){var o,s={},i=null,p=null;for(o in void 0!==r&&(i=""+r),void 0!==t.key&&(i=""+t.key),void 0!==t.ref&&(p=t.ref),t)a.call(t,o)&&!f.hasOwnProperty(o)&&(s[o]=t[o]);if(e&&e.defaultProps)for(o in t=e.defaultProps)void 0===s[o]&&(s[o]=t[o]);return {$$typeof:n,type:e,key:i,ref:p,props:s,_owner:d.current}}function p(e,t){void 0===t&&(t={});var r=t.insertAt;if(e&&"undefined"!=typeof document){var o=document.head||document.getElementsByTagName("head")[0],n=document.createElement("style");n.type="text/css","top"===r&&o.firstChild?o.insertBefore(n,o.firstChild):o.appendChild(n),n.styleSheet?n.styleSheet.cssText=e:n.appendChild(document.createTextNode(e));}}r.Fragment=s,r.jsx=i,r.jsxs=i,t.exports=r;
+
+export { p, t };

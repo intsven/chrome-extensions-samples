@@ -5,3 +5,4 @@ node_modules
 _debug
 _metadata
 .history/
+*.swp # vim temp files

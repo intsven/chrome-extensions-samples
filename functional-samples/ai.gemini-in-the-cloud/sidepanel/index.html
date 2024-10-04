@@ -5,13 +5,15 @@
   </head>
   <body>
     <h1>Google Gemini</h1>
+    <input type="text" id="input-api-key" placeholder="API Key" />
+    <button id="button-api-key" class="primary">Set API Key</button>
     <textarea
       id="input-prompt"
       placeholder='Type something, e.g. "Write a haiku about Chrome Extensions"'
       cols="30"
       rows="5"
     >make the font more space themed</textarea>
-    <div>
+    <div id="div-temperature">
       <input
         type="range"
         id="temperature"

@@ -74,9 +74,11 @@ textarea {
 
 .aipm-code-block {
   /* text background color */
-  background-color: #ff7b7b;
+  background-color: #86ff7b;
   /* text color */
   /* color: #ff0000; */
+  /* code font */
+  font-family: 'Courier New', Courier, monospace;
 }
 
 .blink {

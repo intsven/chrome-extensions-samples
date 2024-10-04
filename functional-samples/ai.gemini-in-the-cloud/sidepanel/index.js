@@ -14,7 +14,7 @@ import {
 //
 // It is only OK to put your API key into this file if you're the only
 // user of your extension or for testing.
-const apiKey = 'AIzaSyCBvr5ObxvmfnvhnpSzblplUPyupDvFzbw';
+let apiKey = '';
 
 let genAI = null;
 let model = null;
@@ -31,6 +31,8 @@ const elementLoading = document.body.querySelector('#loading');
 const elementError = document.body.querySelector('#error');
 const sliderTemperature = document.body.querySelector('#temperature');
 const labelTemperature = document.body.querySelector('#label-temperature');
+const inputApiKey = document.body.querySelector('#input-api-key');
+const buttonApiKey = document.body.querySelector('#button-api-key');
 
 const prompts = [];
 const responses = [];
@@ -57,6 +59,10 @@ function initModel(generationConfig) {
   //    {"role": "model", "parts": "Great to meet you. What would you like to know?"},
   //]
   );
+  // Hide temperature div 
+  hide(document.getElementById('div-temperature'));
+  // Save api key to local storage
+  chrome.storage.local.set({geminiApiKey: apiKey});
   return model;
 }
 
@@ -201,7 +207,7 @@ buttonPrompt.addEventListener('click', async () => {
   const prompt = inputPrompt.value.trim();
   showLoading();
   try {
-    const generationConfig = {
+    generationConfig = {
       temperature: sliderTemperature.value
     };
     initModel(generationConfig);
@@ -292,3 +298,31 @@ function show(element) {
 function hide(element) {
   element.setAttribute('hidden', '');
 }
+
+// Load the API key from local storage
+chrome.storage.local.get(['geminiApiKey'], (result) => {
+  if (result.geminiApiKey) {
+    apiKey = result.geminiApiKey;
+    try {
+      initModel(generationConfig);
+      hide(inputApiKey);
+      hide(buttonApiKey);
+    }
+    catch (e) {
+      showError(e);
+    }
+  }
+});
+
+buttonApiKey.addEventListener('click', () => {
+  apiKey = inputApiKey.value;
+  try {
+    model = null;
+    initModel(generationConfig);
+    hide(inputApiKey);
+    hide(buttonApiKey);
+  }
+  catch (e) {
+    showError(e);
+  }
+});

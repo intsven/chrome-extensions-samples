@@ -4,7 +4,7 @@
     <link rel="stylesheet" type="text/css" href="index.css" />
   </head>
   <body>
-    <h1>Google Gemini</h1>
+    <h1>AI Page Modifier</h1>
     <input type="text" id="input-api-key" placeholder="API Key" />
     <button id="button-api-key" class="primary">Set API Key</button>
     <textarea
@@ -27,10 +27,14 @@
         >Temperature: <span id="label-temperature">1</span></label
       >
     </div>
-    <button id="button-prompt" class="primary">Run</button>
+    <!-- horizontal layout for buttons -->
+    <div id="div-buttons">
+      <button id="button-prompt" class="primary">Run</button>
+      <button id="button-clear" class="secondary">Clear</button>
+    </div>
     <div id="loading" class="text" hidden><span class="blink">...</span></div>
     <div id="error" class="text" hidden></div>
-    <!-- scrollable div for response -->
+    <!-- scrollable div for chat history -->
     <div id="response-container" class="scrollable">
       <div id="prompt" class="textUser" hidden></div>
       <div id="response" class="text" hidden></div>

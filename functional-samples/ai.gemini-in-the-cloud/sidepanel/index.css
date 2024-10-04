@@ -43,6 +43,13 @@ button[disabled] {
   color: #aaa;
 }
 
+/* horizontal layout */
+#div-buttons {
+  display: flex;
+  justify-content: space-between;
+}
+
+
 input[type='range'] {
   margin-top: 16px;
   accent-color: black;

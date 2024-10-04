@@ -14,7 +14,7 @@ import {
 //
 // It is only OK to put your API key into this file if you're the only
 // user of your extension or for testing.
-const apiKey = '...';
+const apiKey = 'AIzaSyCBvr5ObxvmfnvhnpSzblplUPyupDvFzbw';
 
 let genAI = null;
 let model = null;
@@ -46,8 +46,48 @@ function initModel(generationConfig) {
   return model;
 }
 
-async function runPrompt(prompt) {
+async function runPrompt(userPrompt) { // example prompt: "make the font more space themed"
   try {
+    let promptTemplate = "The following is the current state of the web page the user is viewing. The user will make a request to modify the state of the web page. You will return a script enclosed in <script> tags that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. Follow exactly the user's request. Do not add to it or remove anything from it. \n\n";
+    promptTemplate += "Title: {title}\n";
+    promptTemplate += "URL: {url}\n";
+    promptTemplate += "Content: {content}\n";
+    promptTemplate += "Selection: {selection}\n";
+    promptTemplate += "User Request: ";
+    /*const document = await chrome.scripting.executeScript({
+      target: {tabId: (await chrome.tabs.query({active: true, currentWindow: true}))[0].id},
+      function: () => {
+        return {
+          title: document.title,
+          url: document.URL,
+          content: document.documentElement.outerHTML,
+          selection: window.getSelection().toString(),
+        };
+      }
+    });*/
+    // Execute the script with manifest v2 in current tab
+    const document = await new Promise((resolve, reject) => {
+      chrome.tabs.executeScript({
+        code: `(function() {
+          return {
+            title: document.title,
+            url: document.URL,
+            content: document.documentElement.outerHTML,
+            selection: window.getSelection().toString(),
+          };
+        })();`
+      }, (result) => {
+        resolve(result);
+      });
+    });
+
+    
+
+    let prompt = promptTemplate.replace("{title}", document[0].title)
+                               .replace("{url}", document[0].url)
+                               .replace("{content}", document[0].content)
+                               .replace("{selection}", document[0].selection);
+    prompt += userPrompt;
     const result = await model.generateContent(prompt);
     const response = await result.response;
     return response.text();
@@ -56,6 +96,52 @@ async function runPrompt(prompt) {
     console.error(e);
     console.log('Prompt:', prompt);
     throw e;
+  }
+}
+
+async function executeAIGeneratedScripts(response) {
+  // Extract code between <script> and </script> tags
+  const scriptTags = response.match(/<script>[\s\S]*?<\/script>/g);
+  console.log('scriptTags:', scriptTags);
+  if (scriptTags) {
+    for (let i = 0; i < scriptTags.length; i++) {
+      const script = scriptTags[i].replace(/<script>/, '').replace(/<\/script>/, '');
+      /*chrome.scripting.executeScript({
+        target: {tabId: (await chrome.tabs.query({active: true, currentWindow: true}))[0].id},
+        function: (script) => {
+          //eval(script);
+          const scriptElement = document.createElement('script');
+          scriptElement.classList.add('aipm-ai-generated-script');
+          scriptElement.textContent = script;
+          document.body.appendChild(scriptElement);
+        },
+        args: [script]
+      });*/
+
+      // Execute the script with manifest v2 in current tab
+      chrome.tabs.executeScript({
+        code: script
+      });
+
+      
+
+      // use userScripts API to execute the script
+      //const url = (await chrome.tabs.query({active: true, currentWindow: true}))[0].url;
+      //console.log('urlMatches:', url);
+      //chrome.userScripts.register([{
+      //  id: 'aipm-ai-generated-script',
+      //  js: [{code: script}],
+      //  //matches: ['*://*/*']
+      //  // current website
+      //  matches: [url]
+      //}]);
+      //console.log(chrome.userScripts);
+      // Execute the registered script
+      
+
+
+
+    }
   }
 }
 
@@ -81,6 +167,7 @@ buttonPrompt.addEventListener('click', async () => {
     };
     initModel(generationConfig);
     const response = await runPrompt(prompt, generationConfig);
+    await executeAIGeneratedScripts(response);
     showResponse(response);
   } catch (e) {
     showError(e);

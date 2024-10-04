@@ -39,6 +39,7 @@ let prompts = [];
 let userPrompts = [];
 let responses = [];
 let userResponses = [];
+let inputPromptReverseIndex = 0;
 
 // Remove history from storage
 //chrome.storage.local.remove(['history']);
@@ -89,7 +90,7 @@ async function runPrompt(userPrompt) { // example prompt: "make the font more sp
   try {
     let promptTemplate = "Selection: {selection}\nUser Request: ";
     if (prompts.length == 0 && chat._history.length == 0) {
-      promptTemplate = "The following is the current state of the web page the user is viewing. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between /executeThis/ and /untilHere/ that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. Only code in the /executeThis/ tags will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript inside the /executeThis/ tags. If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. \n\n";
+      promptTemplate = "The following is the current state of the web page the user is viewing. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between /executeThis/ and /untilHere/ that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. Only code in the /executeThis/ tags will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript inside the /executeThis/ tags. If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. Do not use 'document.body.innerHTML +=' unless explicitly asked to. \n\n";
       promptTemplate += "Title: {title}\n";
       promptTemplate += "URL: {url}\n";
       promptTemplate += "Content: {content}\n";
@@ -232,6 +233,21 @@ inputPrompt.addEventListener('input', () => {
 inputPrompt.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     buttonPrompt.click();
+  }
+  if (userPrompts.length > 0) {
+    if (event.key === 'ArrowUp') {
+      if (inputPromptReverseIndex < userPrompts.length) {
+        inputPrompt.value = userPrompts[userPrompts.length - 1 - inputPromptReverseIndex];
+        inputPromptReverseIndex++;
+      }
+    } else if (event.key === 'ArrowDown') {
+      if (inputPromptReverseIndex > 0) {
+        inputPromptReverseIndex--;
+        inputPrompt.value = userPrompts[userPrompts.length - 1 - inputPromptReverseIndex];
+      } else {
+        inputPrompt.value = '';
+      }
+    }
   }
 });
 

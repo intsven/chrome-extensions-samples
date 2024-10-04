@@ -25,7 +25,8 @@ let generationConfig = {
 
 const inputPrompt = document.body.querySelector('#input-prompt');
 const buttonPrompt = document.body.querySelector('#button-prompt');
-const elementResponse = document.body.querySelector('#response');
+let elementResponse = document.body.querySelector('#response');
+let elementPrompt = document.body.querySelector('#prompt');
 const elementLoading = document.body.querySelector('#loading');
 const elementError = document.body.querySelector('#error');
 const sliderTemperature = document.body.querySelector('#temperature');
@@ -63,7 +64,7 @@ async function runPrompt(userPrompt) { // example prompt: "make the font more sp
   try {
     let promptTemplate = "Selection: {selection}\nUser Request: ";
     if (prompts.length == 0) {
-      promptTemplate = "The following is the current state of the web page the user is viewing. The user will make a request to modify the state of the web page. You will return a script enclosed in <script> tags that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. \n\n";
+      promptTemplate = "The following is the current state of the web page the user is viewing. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between /executeThis/ and /untilHere/ that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. Only code in the /executeThis/ tags will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript inside the /executeThis/ tags. If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. \n\n";
       promptTemplate += "Title: {title}\n";
       promptTemplate += "URL: {url}\n";
       promptTemplate += "Content: {content}\n";
@@ -136,12 +137,14 @@ function generatePromptHistory() {
 }
 
 async function executeAIGeneratedScripts(response) {
-  // Extract code between <script> and </script> tags
-  const scriptTags = response.match(/<script>[\s\S]*?<\/script>/g);
+  // Extract code between /executeThis/ and /untilHere/ tags
+  //const scriptTags = response.match(/<script>[\s\S]*?<\/script>/g);
+  const scriptTags = response.match(/\/executeThis\/[\s\S]*?\/untilHere\//g);
   console.log('scriptTags:', scriptTags);
   if (scriptTags) {
     for (let i = 0; i < scriptTags.length; i++) {
-      const script = scriptTags[i].replace(/<script>/, '').replace(/<\/script>/, '');
+      //const script = scriptTags[i].replace(/<script>/, '').replace(/<\/script>/, '');
+      const script = scriptTags[i].replace(/\/executeThis\//, '').replace(/\/untilHere\//, '');
       /*chrome.scripting.executeScript({
         target: {tabId: (await chrome.tabs.query({active: true, currentWindow: true}))[0].id},
         function: (script) => {
@@ -204,6 +207,7 @@ buttonPrompt.addEventListener('click', async () => {
     initModel(generationConfig);
     const response = await runPrompt(prompt, generationConfig);
     await executeAIGeneratedScripts(response);
+    showPrompt(prompt);
     showResponse(response);
   } catch (e) {
     showError(e);
@@ -219,19 +223,59 @@ function showLoading() {
 function showResponse(response) {
   hide(elementLoading);
   show(elementResponse);
+  
   // Make sure to preserve line breaks in the response
   elementResponse.textContent = '';
   const paragraphs = response.split(/\r?\n/);
+  let isCodeBlock = false;
+  let codeElement = document.createElement('div');
+  codeElement.classList.add('aipm-code-block');
   for (let i = 0; i < paragraphs.length; i++) {
-    const paragraph = paragraphs[i];
+    if (paragraphs[i].startsWith('/executeThis/')) {
+      isCodeBlock = true;
+    } else if (paragraphs[i].startsWith('/untilHere/')) {
+      isCodeBlock = false;
+      codeElement = document.createElement('div');
+      codeElement.classList.add('aipm-code-block');
+    }
+    const paragraph = paragraphs[i].replace(/\/executeThis\//, '').replace(/\/untilHere\//, '');
     if (paragraph) {
-      elementResponse.appendChild(document.createTextNode(paragraph));
+      const textNode = document.createTextNode(paragraph);
+      if (isCodeBlock) {
+        // Put code blocks in a code element
+        codeElement.appendChild(textNode);
+        elementResponse.appendChild(codeElement);
+      } else
+        elementResponse.appendChild(textNode);
     }
     // Don't add a new line after the final paragraph
     if (i < paragraphs.length - 1) {
-      elementResponse.appendChild(document.createElement('BR'));
+      if (isCodeBlock)
+        codeElement.appendChild(document.createElement('BR'));
+      else
+        elementResponse.appendChild(document.createElement('BR'));
     }
   }
+
+  // Duplicate elementResponse
+  let newElementResponse = elementResponse.cloneNode(true);
+  // Add the duplicate element to the document
+  elementResponse.parentNode.appendChild(newElementResponse);
+  elementResponse = newElementResponse;
+  hide(elementResponse);
+}
+
+function showPrompt(prompt) {
+  show(elementPrompt);
+  elementPrompt.textContent = prompt;
+  // Duplicate elementPrompt
+  let newElementPrompt = elementPrompt.cloneNode(true);
+  elementPrompt.parentNode.appendChild(newElementPrompt);
+  elementPrompt = newElementPrompt;
+  hide(elementPrompt);
+
+  // Clear the input field
+  inputPrompt.value = '';
 }
 
 function showError(error) {

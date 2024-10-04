@@ -63,6 +63,22 @@ textarea {
   outline: none;
 }
 
+.textUser,
+textarea {
+  background-color: #d1d1d1;
+  padding: 16px;
+  border-radius: 16px;
+  box-shadow: rgba(0, 0, 0, 0.16) 0px 1px 4px, rgb(51, 51, 51) 0px 0px 0px 3px;
+  outline: none;
+}
+
+.aipm-code-block {
+  /* text background color */
+  background-color: #ff7b7b;
+  /* text color */
+  /* color: #ff0000; */
+}
+
 .blink {
   animation: 1s ease-in-out 1s infinite reverse both running blink;
 }

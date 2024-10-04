@@ -18,6 +18,7 @@ const apiKey = 'AIzaSyCBvr5ObxvmfnvhnpSzblplUPyupDvFzbw';
 
 let genAI = null;
 let model = null;
+let chat = null;
 let generationConfig = {
   temperature: 1
 };
@@ -30,7 +31,13 @@ const elementError = document.body.querySelector('#error');
 const sliderTemperature = document.body.querySelector('#temperature');
 const labelTemperature = document.body.querySelector('#label-temperature');
 
+const prompts = [];
+const responses = [];
+
 function initModel(generationConfig) {
+  if (model) {
+    return model;
+  }
   const safetySettings = [
     {
       category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
@@ -43,17 +50,27 @@ function initModel(generationConfig) {
     safetySettings,
     generationConfig
   });
+  chat = model.startChat(
+  //  history=[
+  //    {"role": "user", "parts": "Hello"},
+  //    {"role": "model", "parts": "Great to meet you. What would you like to know?"},
+  //]
+  );
   return model;
 }
 
 async function runPrompt(userPrompt) { // example prompt: "make the font more space themed"
   try {
-    let promptTemplate = "The following is the current state of the web page the user is viewing. The user will make a request to modify the state of the web page. You will return a script enclosed in <script> tags that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. Follow exactly the user's request. Do not add to it or remove anything from it. \n\n";
-    promptTemplate += "Title: {title}\n";
-    promptTemplate += "URL: {url}\n";
-    promptTemplate += "Content: {content}\n";
-    promptTemplate += "Selection: {selection}\n";
-    promptTemplate += "User Request: ";
+    let promptTemplate = "Selection: {selection}\nUser Request: ";
+    if (prompts.length == 0) {
+      promptTemplate = "The following is the current state of the web page the user is viewing. The user will make a request to modify the state of the web page. You will return a script enclosed in <script> tags that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. \n\n";
+      promptTemplate += "Title: {title}\n";
+      promptTemplate += "URL: {url}\n";
+      promptTemplate += "Content: {content}\n";
+      promptTemplate += "Selection: {selection}\n";
+      promptTemplate += "User Request: ";
+    }
+      
     /*const document = await chrome.scripting.executeScript({
       target: {tabId: (await chrome.tabs.query({active: true, currentWindow: true}))[0].id},
       function: () => {
@@ -88,15 +105,34 @@ async function runPrompt(userPrompt) { // example prompt: "make the font more sp
                                .replace("{content}", document[0].content)
                                .replace("{selection}", document[0].selection);
     prompt += userPrompt;
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text();
+    prompts.push(prompt);
+    const promptHistory = generatePromptHistory();
+    //const result = await model.generateContent(promptHistory);
+    //const response = await result.response;
+    // const responseText = response.text();
+    const response = (await chat.sendMessage(prompt)).response;
+    console.log('response:', response);
+    const responseText = response.candidates[0].content.parts[0].text;
+    responses.push(response);
+    console.log('chat:', chat);
+    return responseText;
   } catch (e) {
     console.log('Prompt failed');
     console.error(e);
     console.log('Prompt:', prompt);
     throw e;
   }
+}
+
+function generatePromptHistory() {
+  let promptHistory = '';
+  for (let i = 0; i < prompts.length; i++) {
+    promptHistory += prompts[i];
+    promptHistory += '\n\n';
+    promptHistory += responses[i];
+    promptHistory += '\n\n';
+  }
+  return promptHistory;
 }
 
 async function executeAIGeneratedScripts(response) {

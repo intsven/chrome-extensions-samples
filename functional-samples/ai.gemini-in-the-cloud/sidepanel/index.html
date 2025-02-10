@@ -2,16 +2,19 @@
 <html>
   <head>
     <link rel="stylesheet" type="text/css" href="index.css" />
+    
+    <script src="../dist/htmlminifier_kangax_4.0.0.min.js"></script>
+    
   </head>
   <body>
-    <h1>AI Page Modifier</h1>
+    <h3>AI Page Modifier</h3>
     <input type="text" id="input-api-key" placeholder="API Key" />
     <button id="button-api-key" class="primary">Set API Key</button>
     <textarea
       id="input-prompt"
       placeholder='Type something, e.g. "Write a haiku about Chrome Extensions"'
       cols="30"
-      rows="5"
+      rows="3"
     >make the font more space themed</textarea>
     <div id="div-temperature">
       <input
@@ -30,6 +33,7 @@
     <!-- horizontal layout for buttons -->
     <div id="div-buttons">
       <button id="button-prompt" class="primary">Run</button>
+      <button id="button-upload" class="primary">Upload</button>
       <button id="button-clear" class="secondary">Clear</button>
     </div>
     <div id="loading" class="text" hidden><span class="blink">...</span></div>

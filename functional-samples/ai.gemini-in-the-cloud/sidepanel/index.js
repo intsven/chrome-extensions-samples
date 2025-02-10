@@ -4,6 +4,8 @@ import {
   HarmCategory
 } from '../node_modules/@google/generative-ai/dist/index.mjs';
 
+const minify = require('html-minifier').minify;
+
 // Important! Do not expose your API in your extension code. You have to
 // options:
 //
@@ -22,9 +24,12 @@ let chat = null;
 let generationConfig = {
   temperature: 1
 };
+let fileManager = null;
+let fileUri = null;
 
 const inputPrompt = document.body.querySelector('#input-prompt');
 const buttonPrompt = document.body.querySelector('#button-prompt');
+const buttonUpload = document.body.querySelector('#button-upload');
 const buttonClear = document.body.querySelector('#button-clear');
 let elementResponse = document.body.querySelector('#response');
 let elementPrompt = document.body.querySelector('#prompt');
@@ -56,10 +61,12 @@ function initModel(generationConfig) {
   ];
   genAI = new GoogleGenerativeAI(apiKey);
   model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    //model: 'gemini-1.5-flash',
+    model: 'gemini-2.0-flash',
     safetySettings,
     generationConfig
   });
+  //fileManager = new GoogleAIFileManager(apiKey);
   chat = model.startChat(
   //  history=[
   //    {"role": "user", "parts": "Hello"},
@@ -86,17 +93,32 @@ function initModel(generationConfig) {
   return model;
 }
 
+function getPromptTemplate(first=false) {
+  let promptTemplate = "Selection: {selection}\nUser Request: \n";
+  if (prompts.length == 0 && chat._history.length == 0) {
+    promptTemplate = "The following is the current state of the web page the user is viewing in a chrome browser. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between /executeThis/ and /untilHere/ that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. \
+    Only code in the /executeThis/ tags will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript inside the /executeThis/ tags. Do not use '```javascript' or similar things.\
+    Additionally generate code to undo the changes made by the script in the /executeThis/ tags. This code should be placed in the /undoThis/ and /untilUndoHere/ tags. \
+    If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. \
+    Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. \
+    Do not use 'document.body.innerHTML +=' unless explicitly asked to. Using 'document.body.innerHTML +=' often forces a redraw of the page (reloads images too) and is to be avoided. Use 'document.createElement', 'appendChild' and similar methods instead. \
+    If the user asks to extract information from the page do not hard code the extracted information in the response. Write short and concise code instead to extract said information. Avoid spaghetti or repititive code. The goal is to make it very understandable to the user how the information was obtained, filtered and processed. \
+    After modifying the page, scroll to or otherwise highlight the modified part unless asked not to. \
+    If the user is not satisfied with the result and wants to make further edits, make sure to clean up/undo previous steps that are no longer needed/redudant to avoid taking up unnecessary space for duplicate/old information. \
+    Write short code. When applying similar code to multiple objects, apply one function to a list of all the objects. \n\n";
+    promptTemplate += "Title: {title}\n";
+    promptTemplate += "URL: {url}\n";
+    promptTemplate += "Content: {content}\n";
+    promptTemplate += "Selection: {selection}\n";
+    promptTemplate += "User Request: \n";
+  }
+  return promptTemplate;
+}
+
 async function runPrompt(userPrompt) { // example prompt: "make the font more space themed"
   try {
-    let promptTemplate = "Selection: {selection}\nUser Request: ";
-    if (prompts.length == 0 && chat._history.length == 0) {
-      promptTemplate = "The following is the current state of the web page the user is viewing. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between /executeThis/ and /untilHere/ that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. Only code in the /executeThis/ tags will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript inside the /executeThis/ tags. If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. Do not use 'document.body.innerHTML +=' unless explicitly asked to. \n\n";
-      promptTemplate += "Title: {title}\n";
-      promptTemplate += "URL: {url}\n";
-      promptTemplate += "Content: {content}\n";
-      promptTemplate += "Selection: {selection}\n";
-      promptTemplate += "User Request: ";
-    }
+    const isFirstPrompt = prompts.length == 0 && chat._history.length == 0;
+    let promptTemplate = getPromptTemplate(isFirstPrompt);
       
     /*const document = await chrome.scripting.executeScript({
       target: {tabId: (await chrome.tabs.query({active: true, currentWindow: true}))[0].id},
@@ -116,7 +138,7 @@ async function runPrompt(userPrompt) { // example prompt: "make the font more sp
           return {
             title: document.title,
             url: document.URL,
-            content: document.documentElement.outerHTML,
+            content: new XMLSerializer().serializeToString(document),
             selection: window.getSelection().toString(),
           };
         })();`
@@ -125,11 +147,38 @@ async function runPrompt(userPrompt) { // example prompt: "make the font more sp
       });
     });
 
-    
+    let contentWithScripts = "";
+    if (isFirstPrompt) {
+      let rawContent = document[0].content;
+      rawContent = rawContent.replace('id="notification" "=""', 'id="notification" ');
+      //rawContent = rawContent.replace(' "=""', ' ');
+      contentWithScripts = minify(rawContent, {
+        collapseWhitespace: true,
+        removeComments: true,
+        removeEmptyAttributes: false,
+        removeEmptyElements: true,
+        removeOptionalTags: true,
+        removeRedundantAttributes: true,
+        removeScriptTypeAttributes: true,
+        removeStyleLinkTypeAttributes: true,
+        useShortDoctype: true,
+        minifyJS: true,
+        minifyCSS: true,
+        minifyURLs: true,
+        decodeEntities: true,
+        html5: true
+      });
+      // Print lengths of raw and minified content in one line
+      console.log('Raw length:', rawContent.length, 'Minified length:', contentWithScripts.length);
+      // Set elementLoading text to the length of the raw and minified content
+      elementLoading.textContent = 'Raw length: ' + rawContent.length + ' Minified length: ' + contentWithScripts.length;
+    }
+
+    // make the video element fill the whole width of its parent element
 
     let prompt = promptTemplate.replace("{title}", document[0].title)
                                .replace("{url}", document[0].url)
-                               .replace("{content}", document[0].content)
+                               .replace("{content}", contentWithScripts)
                                .replace("{selection}", document[0].selection);
     prompt += userPrompt;
     prompts.push(prompt);
@@ -286,6 +335,7 @@ buttonClear.addEventListener('click', () => {
   }
   elementPrompt = document.body.querySelector('#prompt');
   elementResponse = document.body.querySelector('#response');
+  inputPromptReverseIndex = 0;
 });
 
 function showLoading() {
@@ -302,33 +352,62 @@ function showResponse(response) {
   elementResponse.textContent = '';
   const paragraphs = response.split(/\r?\n/);
   let isCodeBlock = false;
-  let codeElement = document.createElement('div');
-  codeElement.classList.add('aipm-code-block');
+  let isUndoBlock = false;
+  let codeElement = null;
+  let script = '';
   for (let i = 0; i < paragraphs.length; i++) {
     if (paragraphs[i].startsWith('/executeThis/')) {
       isCodeBlock = true;
-    } else if (paragraphs[i].startsWith('/untilHere/')) {
-      isCodeBlock = false;
-      codeElement = document.createElement('div');
+      codeElement = document.createElement('button');
       codeElement.classList.add('aipm-code-block');
+    } else if (paragraphs[i].startsWith('/untilHere/')) {
+      const doScript = script;
+      codeElement.addEventListener('click', () => {
+        chrome.tabs.executeScript({
+          code: doScript
+        });
+      });
+      script = '';
+      isCodeBlock = false;
     }
-    const paragraph = paragraphs[i].replace(/\/executeThis\//, '').replace(/\/untilHere\//, '');
+    if (paragraphs[i].startsWith('/undoThis/')) {
+      isUndoBlock = true;
+      codeElement = document.createElement('button');
+      codeElement.classList.add('aipm-undo-block');
+    } else if (paragraphs[i].startsWith('/untilUndoHere/')) {
+      const undoScript = script;
+      console.log('undoScript:', undoScript);
+      codeElement.addEventListener('click', () => {
+        console.log('undoScript:', undoScript);
+        chrome.tabs.executeScript({
+          code: undoScript
+        });
+      });
+      script = '';
+      isUndoBlock = false;
+    }
+    let paragraph = paragraphs[i].replace(/\/executeThis\//, '').replace(/\/untilHere\//, '');
+    paragraph = paragraph.replace(/\/undoThis\//, '').replace(/\/untilUndoHere\//, '');
+    if (isCodeBlock || isUndoBlock) {
+      script += paragraph;
+    }
     if (paragraph) {
       const textNode = document.createTextNode(paragraph);
-      if (isCodeBlock) {
+      if (isCodeBlock || isUndoBlock) {
         // Put code blocks in a code element
         codeElement.appendChild(textNode);
         elementResponse.appendChild(codeElement);
       } else
         elementResponse.appendChild(textNode);
+      // Don't add a new line after the final paragraph
+      if (i < paragraphs.length - 1 && i > 0) {
+        if (isCodeBlock || isUndoBlock)
+          codeElement.appendChild(document.createElement('BR'));
+        else
+          ;//elementResponse.appendChild(document.createElement('BR'));
+      }
     }
-    // Don't add a new line after the final paragraph
-    if (i < paragraphs.length - 1 && i > 0) {
-      if (isCodeBlock)
-        codeElement.appendChild(document.createElement('BR'));
-      else
-        elementResponse.appendChild(document.createElement('BR'));
-    }
+    
   }
 
   // Duplicate elementResponse
@@ -406,3 +485,154 @@ buttonApiKey.addEventListener('click', () => {
     showError(e);
   }
 });
+
+buttonUpload.addEventListener('click', () => {
+  initModel(generationConfig);
+  uploadFile();
+});
+
+async function uploadFile() {
+  showLoading();
+  // Upload web page content to the AI as file
+  const document = await new Promise((resolve, reject) => {
+    chrome.tabs.executeScript({
+      code: `(function() {
+        return {
+          title: document.title,
+          url: document.URL,
+          content: new XMLSerializer().serializeToString(document),
+          selection: window.getSelection().toString(),
+        };
+      })();`
+    }, (result) => {
+      resolve(result);
+    });
+  });
+  const documentContent = document[0].content;
+  // convert \x3C, etc. to <, etc.
+  //const rawContent = unescape(encodeURIComponent(documentContent));
+  // don't use unescape, it's deprecated
+  //const rawContent = decodeURIComponent(documentContent);
+  const rawContent = documentContent;
+  const rawNumBytes = new Blob([rawContent]).size;
+  const title = document[0].title;
+  const url = document[0].url;
+  const selection = document[0].selection;
+  const fileName = title + '.html';
+
+  const contentWithScripts = minify(rawContent, {
+    collapseWhitespace: true,
+    removeComments: true,
+    removeEmptyAttributes: true,
+    removeEmptyElements: true,
+    removeOptionalTags: true,
+    removeRedundantAttributes: true,
+    removeScriptTypeAttributes: true,
+    removeStyleLinkTypeAttributes: true,
+    useShortDoctype: true,
+    minifyJS: true,
+    minifyCSS: true,
+    minifyURLs: true,
+    decodeEntities: true,
+    html5: true
+  });
+  
+  // Remove scripts
+  //const content = contentWithScripts.replace(/<script>[\s\S]*?<\/script>/g, '');
+  // other way to remove scripts
+  //const content = contentWithScripts.replace(/<script[\s\S]*?<\/script>/g, '');
+  const content = contentWithScripts;
+
+  // Get the MIME type of the content
+  const mimeType = 'text/html';
+  // use UTF-8 encoding
+  const numBytes = new Blob([content]).size;
+  const numBytesWithScripts = new Blob([contentWithScripts]).size;
+  console.log('Original page size:', rawNumBytes);
+  console.log('Minified page size:', numBytes);
+  console.log('Percentage of original size:', (numBytes / rawNumBytes) * 100);
+  console.log('Percentage of minified size:', (numBytes / numBytesWithScripts) * 100);
+  const displayName = title;
+
+  if (!fileUri) {
+    await uploadHTML(numBytes, mimeType, displayName, content);
+  }
+
+  // Now generate content using that file using model.generateContent
+  let promptTemplate = getPromptTemplate();
+  let prompt = promptTemplate.replace("{title}", title)
+                             .replace("{url}", url)
+                             .replace("{content}", "The content of the web page is in the file.")
+                             .replace("{selection}", selection);
+  const userPrompt = inputPrompt.value.trim();
+  if (!userPrompt) {
+    return;
+  }
+  // Append previous prompts and responses to the prompt
+  for (let i = 0; i < prompts.length; i++) {
+    prompt += "Prompt:\n";
+    prompt += prompts[i];
+    prompt += "\n\n";
+    prompt += "Response:\n";
+    prompt += responses[i];
+    prompt += "\n\n";
+  }
+  prompt += userPrompt;
+  const response = await model.generateContent({
+    contents: [{
+      parts: [
+        {text: prompt},
+        {file_data: {mime_type: mimeType, file_uri: fileUri}}
+      ]
+    }]
+  });
+  console.log('response:', response);
+  const responseText = response.response.candidates[0].content.parts[0].text;
+  console.log('responseText:', responseText);
+  await executeAIGeneratedScripts(responseText);
+  
+  prompts.push(prompt);
+  userPrompts.push(userPrompt);
+  responses.push(response);
+  userResponses.push(responseText);
+  chrome.storage.local.set({history: {chat: chat._history, prompts: prompts, responses: responses, userPrompts: userPrompts, userResponses: userResponses}});
+  showPrompt(userPrompt);
+  showResponse(responseText);
+  savePopupState();
+}
+
+async function uploadHTML(numBytes, mimeType, displayName, content) {
+  // Initial resumable request defining metadata.
+  // The upload url is in the response headers dump them to a file.
+  const startResponse = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files?key=' + apiKey, {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': numBytes,
+      'X-Goog-Upload-Header-Content-Type': mimeType,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ file: { display_name: displayName } })
+  });
+
+  const uploadUrl = startResponse.headers.get('X-Goog-Upload-URL');
+  console.log('uploadUrl:', uploadUrl);
+
+  // Upload the actual bytes.
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': numBytes,
+      'X-Goog-Upload-Offset': 0,
+      'X-Goog-Upload-Command': 'upload, finalize'
+    },
+    body: content
+  });
+
+  const fileInfo = await uploadResponse.json();
+  console.log('fileInfo:', fileInfo);
+  fileUri = fileInfo.file.uri;
+  console.log('fileUri:', fileUri);
+}
+

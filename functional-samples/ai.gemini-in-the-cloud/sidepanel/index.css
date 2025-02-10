@@ -4,9 +4,17 @@ body {
   color: #ffffff;
   background-color: #000000;
   font-size: 16px;
-  padding: 8px;
   min-width: 320px;
   min-height: 500px;
+  padding-right: 4px;
+}
+
+html,
+body {
+  resize: both;
+  overflow: auto;
+  max-width: 800px;
+  max-height: 600px;
 }
 
 input,
@@ -24,7 +32,6 @@ button {
   border: none;
   min-width: 100px;
   padding: 8px;
-  margin: 16px 0;
   cursor: pointer;
 }
 
@@ -65,7 +72,6 @@ textarea {
 .text,
 textarea {
   background-color: rgb(26, 26, 26);
-  padding: 16px;
   border-radius: 16px;
   box-shadow: rgba(0, 0, 0, 0.16) 0px 1px 4px, rgb(51, 51, 51) 0px 0px 0px 3px;
   outline: none;
@@ -87,7 +93,21 @@ textarea {
   /* color: #ff0000; */
   /* code font */
   font-family: 'Courier New', Courier, monospace;
+  /* left align */
+  text-align: left;
 }
+
+.aipm-undo-block {
+  background-color: #630000;
+  font-family: 'Courier New', Courier, monospace;
+  text-align: left;
+}
+
+/* clicked aipm-undo-block */
+.aipm-undo-block[clicked] {
+  background-color: #2e0000;
+}
+
 
 .scrollable {
   overflow-y: auto;
@@ -96,7 +116,7 @@ textarea {
   max-width: 100%;
 }
 
-h1 {
+h3 {
   margin: 0;
 }
 

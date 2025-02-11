@@ -14,7 +14,7 @@ body {
   resize: both;
   overflow: auto;
   max-width: 800px;
-  max-height: 600px;
+  max-height: 590px;
 }
 
 input,
@@ -80,7 +80,7 @@ textarea {
 .textUser,
 textarea {
   background-color: #525252;
-  padding: 16px;
+  padding: 6px;
   border-radius: 16px;
   box-shadow: rgba(0, 0, 0, 0.16) 0px 1px 4px, rgb(51, 51, 51) 0px 0px 0px 3px;
   outline: none;
@@ -111,9 +111,9 @@ textarea {
 
 .scrollable {
   overflow-y: auto;
-  max-height: 300px;
+  max-height: 400px;
   /* restrict width to avoid horizontal scroll */
-  max-width: 100%;
+  max-width: 790px;
 }
 
 h3 {

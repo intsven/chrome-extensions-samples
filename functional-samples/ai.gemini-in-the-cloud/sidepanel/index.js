@@ -6,18 +6,7 @@ import {
 
 const minify = require('html-minifier').minify;
 
-// Important! Do not expose your API in your extension code. You have to
-// options:
-//
-// 1. Let users provide their own API key.
-// 2. Manage API keys in your own server and proxy all calls to the Gemini
-// API through your own server, where you can implement additional security
-// measures such as authentification.
-//
-// It is only OK to put your API key into this file if you're the only
-// user of your extension or for testing.
 let apiKey = '';
-
 let genAI = null;
 let model = null;
 let chat = null;
@@ -26,6 +15,19 @@ let generationConfig = {
 };
 let fileManager = null;
 let fileUri = null;
+let currentUrl = '';
+let currentUrlData = {
+  prompts: [],
+  responses: [],
+  userPrompts: [],
+  userResponses: [],
+  chatHistory: []
+};
+
+const startTag = '<changeScript>';
+const endTag = '</changeScript>';
+const undoStartTag = '<undoScript>';
+const undoEndTag = '</undoScript>';
 
 const inputPrompt = document.body.querySelector('#input-prompt');
 const buttonPrompt = document.body.querySelector('#button-prompt');
@@ -46,8 +48,91 @@ let responses = [];
 let userResponses = [];
 let inputPromptReverseIndex = 0;
 
-// Remove history from storage
-//chrome.storage.local.remove(['history']);
+// Load site-specific data from storage
+async function loadSiteData() {
+  const document = await new Promise((resolve, reject) => {
+    chrome.tabs.executeScript({
+      code: `(function() {
+        return {
+          url: document.URL
+        };
+      })();`
+    }, (result) => {
+      resolve(result);
+    });
+  });
+  
+  currentUrl = document[0].url;
+  
+  chrome.storage.local.get(['siteData'], (result) => {
+    if (result.siteData && result.siteData[currentUrl]) {
+      const siteData = result.siteData[currentUrl];
+      prompts = siteData.prompts || [];
+      responses = siteData.responses || [];
+      userPrompts = siteData.userPrompts || [];
+      userResponses = siteData.userResponses || [];
+      if (siteData.chatHistory) {
+        chat = model.startChat({history: siteData.chatHistory});
+      }
+      currentUrlData = siteData;
+      showHistory();
+    } else {
+      prompts = [];
+      responses = [];
+      userPrompts = [];
+      userResponses = [];
+      chat = model.startChat();
+      currentUrlData = {
+        prompts: [],
+        responses: [],
+        userPrompts: [],
+        userResponses: [],
+        chatHistory: []
+      };
+    }
+  });
+}
+
+// Save site-specific data to storage
+function saveSiteData() {
+  chrome.storage.local.get(['siteData'], (result) => {
+    const siteData = result.siteData || {};
+    siteData[currentUrl] = {
+      prompts: prompts,
+      responses: responses,
+      userPrompts: userPrompts,
+      userResponses: userResponses,
+      chatHistory: chat._history
+    };
+    chrome.storage.local.set({siteData: siteData});
+  });
+}
+
+function getPromptTemplate(first=false) {
+  let promptTemplate = "Selection: {selection}\nUser Request: \n";
+  if (prompts.length == 0 && chat._history.length == 0) {
+    promptTemplate = "The following is the current state of the web page the user is viewing in a chrome browser. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between '<changeScript>' and '</changeScript>' that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. \
+    Only code between '<changeScript>' and '</changeScript>' will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript. Use '```javascript' and '```' only to enclose the entire code (both changeScript and undoScript). \
+    Additionally generate code to undo the changes made by the script after the '<changeScript>' tag. This code should be placed in the '<undoScript>' and '</undoScript>' tags. \
+    If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. \
+    Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. \
+    Do not use 'document.body.innerHTML +=' unless explicitly asked to. Using 'document.body.innerHTML +=' often forces a redraw of the page (reloads images too) and is to be avoided. Use 'document.createElement', 'appendChild' and similar methods instead. \
+    If the user asks to extract information from the page do not hard code the extracted information in the response. Write short and concise code instead to extract said information. Avoid spaghetti or repititive code. The goal is to make it very understandable to the user how the information was obtained, filtered and processed. \
+    After modifying the page, scroll to or otherwise highlight the modified part unless asked not to. \
+    If the user is not satisfied with the result and wants to make further edits, make sure to clean up/undo previous steps that are no longer needed/redudant to avoid taking up unnecessary space for duplicate/old information. \
+    Write short code. When applying similar code to multiple objects, apply one function to a list of all the objects. \n\n";
+    promptTemplate = promptTemplate.replace(/<changeScript>/g, startTag);
+    promptTemplate = promptTemplate.replace(/<\/changeScript>/g, endTag);
+    promptTemplate = promptTemplate.replace(/<undoScript>/g, undoStartTag);
+    promptTemplate = promptTemplate.replace(/<\/undoScript>/g, undoEndTag);
+    promptTemplate += "Title: {title}\n";
+    promptTemplate += "URL: {url}\n";
+    promptTemplate += "Content: {content}\n";
+    promptTemplate += "Selection: {selection}\n";
+    promptTemplate += "User Request: \n";
+  }
+  return promptTemplate;
+}
 
 function initModel(generationConfig) {
   if (model) {
@@ -61,77 +146,25 @@ function initModel(generationConfig) {
   ];
   genAI = new GoogleGenerativeAI(apiKey);
   model = genAI.getGenerativeModel({
-    //model: 'gemini-1.5-flash',
     model: 'gemini-2.0-flash',
     safetySettings,
     generationConfig
   });
-  //fileManager = new GoogleAIFileManager(apiKey);
-  chat = model.startChat(
-  //  history=[
-  //    {"role": "user", "parts": "Hello"},
-  //    {"role": "model", "parts": "Great to meet you. What would you like to know?"},
-  //]
-  );
-  // Load chat history from local storage
-  chrome.storage.local.get(['history'], (result) => {
-    if (result.history) {
-      const history = result.history;
-      console.log('chatHistory:', history);
-      chat = model.startChat({history: history.chat});
-      prompts = history.prompts;
-      responses = history.responses;
-      userPrompts = history.userPrompts;
-      userResponses = history.userResponses;
-      showHistory();
-    }
-  });
-  // Hide temperature div 
+  chat = model.startChat();
+  
   hide(document.getElementById('div-temperature'));
-  // Save api key to local storage
   chrome.storage.local.set({geminiApiKey: apiKey});
+  
+  loadSiteData();
+  
   return model;
 }
 
-function getPromptTemplate(first=false) {
-  let promptTemplate = "Selection: {selection}\nUser Request: \n";
-  if (prompts.length == 0 && chat._history.length == 0) {
-    promptTemplate = "The following is the current state of the web page the user is viewing in a chrome browser. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between /executeThis/ and /untilHere/ that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. \
-    Only code in the /executeThis/ tags will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript inside the /executeThis/ tags. Do not use '```javascript' or similar things.\
-    Additionally generate code to undo the changes made by the script in the /executeThis/ tags. This code should be placed in the /undoThis/ and /untilUndoHere/ tags. \
-    If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. \
-    Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. \
-    Do not use 'document.body.innerHTML +=' unless explicitly asked to. Using 'document.body.innerHTML +=' often forces a redraw of the page (reloads images too) and is to be avoided. Use 'document.createElement', 'appendChild' and similar methods instead. \
-    If the user asks to extract information from the page do not hard code the extracted information in the response. Write short and concise code instead to extract said information. Avoid spaghetti or repititive code. The goal is to make it very understandable to the user how the information was obtained, filtered and processed. \
-    After modifying the page, scroll to or otherwise highlight the modified part unless asked not to. \
-    If the user is not satisfied with the result and wants to make further edits, make sure to clean up/undo previous steps that are no longer needed/redudant to avoid taking up unnecessary space for duplicate/old information. \
-    Write short code. When applying similar code to multiple objects, apply one function to a list of all the objects. \n\n";
-    promptTemplate += "Title: {title}\n";
-    promptTemplate += "URL: {url}\n";
-    promptTemplate += "Content: {content}\n";
-    promptTemplate += "Selection: {selection}\n";
-    promptTemplate += "User Request: \n";
-  }
-  return promptTemplate;
-}
-
-async function runPrompt(userPrompt) { // example prompt: "make the font more space themed"
+async function runPrompt(userPrompt) {
   try {
     const isFirstPrompt = prompts.length == 0 && chat._history.length == 0;
     let promptTemplate = getPromptTemplate(isFirstPrompt);
       
-    /*const document = await chrome.scripting.executeScript({
-      target: {tabId: (await chrome.tabs.query({active: true, currentWindow: true}))[0].id},
-      function: () => {
-        return {
-          title: document.title,
-          url: document.URL,
-          content: document.documentElement.outerHTML,
-          selection: window.getSelection().toString(),
-        };
-      }
-    });*/
-    // Execute the script with manifest v2 in current tab
     const document = await new Promise((resolve, reject) => {
       chrome.tabs.executeScript({
         code: `(function() {
@@ -151,7 +184,6 @@ async function runPrompt(userPrompt) { // example prompt: "make the font more sp
     if (isFirstPrompt) {
       let rawContent = document[0].content;
       rawContent = rawContent.replace('id="notification" "=""', 'id="notification" ');
-      //rawContent = rawContent.replace(' "=""', ' ');
       contentWithScripts = minify(rawContent, {
         collapseWhitespace: true,
         removeComments: true,
@@ -168,13 +200,9 @@ async function runPrompt(userPrompt) { // example prompt: "make the font more sp
         decodeEntities: true,
         html5: true
       });
-      // Print lengths of raw and minified content in one line
       console.log('Raw length:', rawContent.length, 'Minified length:', contentWithScripts.length);
-      // Set elementLoading text to the length of the raw and minified content
       elementLoading.textContent = 'Raw length: ' + rawContent.length + ' Minified length: ' + contentWithScripts.length;
     }
-
-    // make the video element fill the whole width of its parent element
 
     let prompt = promptTemplate.replace("{title}", document[0].title)
                                .replace("{url}", document[0].url)
@@ -183,23 +211,21 @@ async function runPrompt(userPrompt) { // example prompt: "make the font more sp
     prompt += userPrompt;
     prompts.push(prompt);
     userPrompts.push(userPrompt);
-    const promptHistory = generatePromptHistory();
-    //const result = await model.generateContent(promptHistory);
-    //const response = await result.response;
-    // const responseText = response.text();
     const response = (await chat.sendMessage(prompt)).response;
     console.log('response:', response);
-    const responseText = response.candidates[0].content.parts[0].text;
+    let responseText = response.candidates[0].content.parts[0].text;
+    // Remove ```javascript and ``` from the response
+    responseText = responseText.replace(/```javascript/g, '');
+    responseText = responseText.replace(/```/g, '');
     responses.push(response);
     userResponses.push(responseText);
-    console.log('chat:', chat);
-    // save chat history to local storage
-    chrome.storage.local.set({history: {chat: chat._history, prompts: prompts, responses: responses, userPrompts: userPrompts, userResponses: userResponses}});
+    
+    saveSiteData();
+    
     return responseText;
   } catch (e) {
     console.log('Prompt failed');
     console.error(e);
-    console.log('Prompt:', prompt);
     throw e;
   }
 }
@@ -216,14 +242,15 @@ function generatePromptHistory() {
 }
 
 async function executeAIGeneratedScripts(response) {
-  // Extract code between /executeThis/ and /untilHere/ tags
+  // Extract code between <changeScript> and </changeScript> tags
   //const scriptTags = response.match(/<script>[\s\S]*?<\/script>/g);
-  const scriptTags = response.match(/\/executeThis\/[\s\S]*?\/untilHere\//g);
+  //const scriptTags = response.match(/\/executeThis\/[\s\S]*?\/untilHere\//g);
+  const scriptTags = response.match(/<changeScript>[\s\S]*?<\/changeScript>/g);
   console.log('scriptTags:', scriptTags);
   if (scriptTags) {
     for (let i = 0; i < scriptTags.length; i++) {
       //const script = scriptTags[i].replace(/<script>/, '').replace(/<\/script>/, '');
-      let script = scriptTags[i].replace(/\/executeThis\//, '').replace(/\/untilHere\//, '');
+      let script = scriptTags[i].replace(/<changeScript>/, '').replace(/<\/changeScript>/, '');
       // Wrap script in a function to avoid conflicts with existing variables
       script = `(function() {${script}})();`;
       /*chrome.scripting.executeScript({
@@ -326,7 +353,13 @@ buttonClear.addEventListener('click', () => {
   responses = [];
   userPrompts = [];
   userResponses = [];
-  chrome.storage.local.remove(['history']);
+  //chrome.storage.local.remove(['history']);
+  // Remove site-specific data
+  chrome.storage.local.get(['siteData'], (result) => {
+    const siteData = result.siteData || {};
+    delete siteData[currentUrl];
+    chrome.storage.local.set({siteData: siteData});
+  });
   chat = model.startChat();
   // Delete all chat history elements
   let element = elementPrompt;
@@ -356,11 +389,11 @@ function showResponse(response) {
   let codeElement = null;
   let script = '';
   for (let i = 0; i < paragraphs.length; i++) {
-    if (paragraphs[i].startsWith('/executeThis/')) {
+    if (paragraphs[i].startsWith(startTag)) {
       isCodeBlock = true;
       codeElement = document.createElement('button');
       codeElement.classList.add('aipm-code-block');
-    } else if (paragraphs[i].startsWith('/untilHere/')) {
+    } else if (paragraphs[i].startsWith(endTag)) {
       const doScript = script;
       codeElement.addEventListener('click', () => {
         chrome.tabs.executeScript({
@@ -370,11 +403,11 @@ function showResponse(response) {
       script = '';
       isCodeBlock = false;
     }
-    if (paragraphs[i].startsWith('/undoThis/')) {
+    if (paragraphs[i].startsWith(undoStartTag)) {
       isUndoBlock = true;
       codeElement = document.createElement('button');
       codeElement.classList.add('aipm-undo-block');
-    } else if (paragraphs[i].startsWith('/untilUndoHere/')) {
+    } else if (paragraphs[i].startsWith(undoEndTag)) {
       const undoScript = script;
       console.log('undoScript:', undoScript);
       codeElement.addEventListener('click', () => {
@@ -386,8 +419,8 @@ function showResponse(response) {
       script = '';
       isUndoBlock = false;
     }
-    let paragraph = paragraphs[i].replace(/\/executeThis\//, '').replace(/\/untilHere\//, '');
-    paragraph = paragraph.replace(/\/undoThis\//, '').replace(/\/untilUndoHere\//, '');
+    let paragraph = paragraphs[i].replace(startTag, '').replace(endTag, '');
+    paragraph = paragraph.replace(undoStartTag, '').replace(undoEndTag, '');
     if (isCodeBlock || isUndoBlock) {
       script += paragraph;
     }

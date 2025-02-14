@@ -44,9 +44,23 @@ const buttonApiKey = document.body.querySelector('#button-api-key');
 
 let prompts = [];
 let userPrompts = [];
+let previousPrompts = [];
 let responses = [];
 let userResponses = [];
 let inputPromptReverseIndex = 0;
+let currentScreenshotDataUrl = '';
+
+const systemPrompt = "The following is the current state of the web page the user is viewing in a chrome browser. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between '<changeScript>' and '</changeScript>' that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. \
+Only code between '<changeScript>' and '</changeScript>' will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript. Use '```javascript' and '```' only to enclose the entire code (both changeScript and undoScript). \
+Additionally generate code to undo the changes made by the script after the '<changeScript>' tag. This code should be placed in the '<undoScript>' and '</undoScript>' tags. If there is no way to undo the actions (such as opening new tabs) or undoing the changes is not needed do not generate an undoScript. \
+If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. \
+Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. \
+Do not use 'document.body.innerHTML +=' unless explicitly asked to. Using 'document.body.innerHTML +=' often forces a redraw of the page (reloads images too) and is to be avoided. Use 'document.createElement', 'appendChild' and similar methods instead. \
+If the user asks to extract information from the page do not hard code the extracted information in the response. Write short and concise code instead to extract said information. Avoid spaghetti or repititive code. The goal is to make it very understandable to the user how the information was obtained, filtered and processed. \
+After modifying the page, scroll to or otherwise highlight the modified part unless asked not to. \
+If the user is not satisfied with the result and wants to make further edits, make sure to clean up/undo previous steps that are no longer needed/redudant to avoid taking up unnecessary space for duplicate/old information. \
+Write short code. When applying similar code to multiple objects, apply one function to a list of all the objects. \
+If the user request an action that causes the extension popup to close such as opening new tabs put '//DL8' after the code in the last line of the changeScript to signal a delayed execution. Include the enclosing tags ('<changeScript>' and '</changeScript>') in this situation as well, this is VERY important. \n\n";
 
 // Load site-specific data from storage
 async function loadSiteData() {
@@ -70,6 +84,7 @@ async function loadSiteData() {
       prompts = siteData.prompts || [];
       responses = siteData.responses || [];
       userPrompts = siteData.userPrompts || [];
+      previousPrompts = siteData.previousPrompts || [];
       userResponses = siteData.userResponses || [];
       if (siteData.chatHistory) {
         chat = model.startChat({history: siteData.chatHistory});
@@ -80,12 +95,14 @@ async function loadSiteData() {
       prompts = [];
       responses = [];
       userPrompts = [];
+      previousPrompts = [];
       userResponses = [];
-      chat = model.startChat();
+      //chat = model.startChat();
       currentUrlData = {
         prompts: [],
         responses: [],
         userPrompts: [],
+        previousPrompts: [],
         userResponses: [],
         chatHistory: []
       };
@@ -101,6 +118,7 @@ function saveSiteData() {
       prompts: prompts,
       responses: responses,
       userPrompts: userPrompts,
+      previousPrompts: previousPrompts,
       userResponses: userResponses,
       chatHistory: chat._history
     };
@@ -110,17 +128,8 @@ function saveSiteData() {
 
 function getPromptTemplate(first=false) {
   let promptTemplate = "Selection: {selection}\nUser Request: \n";
-  if (prompts.length == 0 && chat._history.length == 0) {
-    promptTemplate = "The following is the current state of the web page the user is viewing in a chrome browser. The user will make a request to modify the state of the web page. You will return raw javascript enclosed between '<changeScript>' and '</changeScript>' that will be executed on the web page. The script should modify the web page in a way that is consistent with the user's request. \
-    Only code between '<changeScript>' and '</changeScript>' will be executed. Everything else will be ignored. Never use <style> tags as those will be ignored. Instead put every change as raw javascript. Use '```javascript' and '```' only to enclose the entire code (both changeScript and undoScript). \
-    Additionally generate code to undo the changes made by the script after the '<changeScript>' tag. This code should be placed in the '<undoScript>' and '</undoScript>' tags. \
-    If you need to include external resources you have to add those to the DOM using javascript. Follow exactly the user's request. Do not add to it or remove anything from it. Make sure that all additional libraries, fonts, scripts, images, etc. are included and added to the page if necessary. This is very important! If unsure add it to the page anyway while ensuring that nothing else is affected. Keep this rule in mind for follow-up requests. Especially if the user replies that something is not working or showing correctly make sure to add missing things. \
-    Do not write code that outputs to console unless explicitly asked to. Use other appropriate methods instead. \
-    Do not use 'document.body.innerHTML +=' unless explicitly asked to. Using 'document.body.innerHTML +=' often forces a redraw of the page (reloads images too) and is to be avoided. Use 'document.createElement', 'appendChild' and similar methods instead. \
-    If the user asks to extract information from the page do not hard code the extracted information in the response. Write short and concise code instead to extract said information. Avoid spaghetti or repititive code. The goal is to make it very understandable to the user how the information was obtained, filtered and processed. \
-    After modifying the page, scroll to or otherwise highlight the modified part unless asked not to. \
-    If the user is not satisfied with the result and wants to make further edits, make sure to clean up/undo previous steps that are no longer needed/redudant to avoid taking up unnecessary space for duplicate/old information. \
-    Write short code. When applying similar code to multiple objects, apply one function to a list of all the objects. \n\n";
+  if (prompts.length == 0 && chat._history.length <= 1) {
+    promptTemplate = "";
     promptTemplate = promptTemplate.replace(/<changeScript>/g, startTag);
     promptTemplate = promptTemplate.replace(/<\/changeScript>/g, endTag);
     promptTemplate = promptTemplate.replace(/<undoScript>/g, undoStartTag);
@@ -147,10 +156,10 @@ function initModel(generationConfig) {
   genAI = new GoogleGenerativeAI(apiKey);
   model = genAI.getGenerativeModel({
     model: 'gemini-2.0-flash',
+    systemInstruction: systemPrompt,
     safetySettings,
     generationConfig
   });
-  chat = model.startChat();
   
   hide(document.getElementById('div-temperature'));
   chrome.storage.local.set({geminiApiKey: apiKey});
@@ -160,10 +169,30 @@ function initModel(generationConfig) {
   return model;
 }
 
+function initChat(callbackScreenshot) {
+  // Capture a screenshot of the current tab using callbackScreenshot
+  //chrome.tabs.captureVisibleTab(null, {format: 'png'}, callbackScreenshot);
+  // Send screenshot request to background.js
+  chrome.runtime.sendMessage({type: 'screenshot', windowId: chrome.windows.WINDOW_ID_CURRENT}, (response) => {
+    //console.log('response:', response);
+    callbackScreenshot(response.dataUrl);
+  });
+}
+
+function startChat(screenshotDataUrl) {
+  console.log('screenshotDataUrl:', screenshotDataUrl);
+  currentScreenshotDataUrl = screenshotDataUrl;
+  if (!chat) {
+    chat = model.startChat();
+  }
+}
+
 async function runPrompt(userPrompt) {
   try {
-    const isFirstPrompt = prompts.length == 0 && chat._history.length == 0;
+    const isFirstPrompt = prompts.length == 0 && chat._history.length <= 1;
+    previousPrompts.push(userPrompt);
     let promptTemplate = getPromptTemplate(isFirstPrompt);
+    //let promptTemplate = getPromptTemplate(true);
       
     const document = await new Promise((resolve, reject) => {
       chrome.tabs.executeScript({
@@ -180,7 +209,7 @@ async function runPrompt(userPrompt) {
       });
     });
 
-    let contentWithScripts = "";
+    let contentWithScripts = document[0].content;
     if (isFirstPrompt) {
       let rawContent = document[0].content;
       rawContent = rawContent.replace('id="notification" "=""', 'id="notification" ');
@@ -203,16 +232,36 @@ async function runPrompt(userPrompt) {
       console.log('Raw length:', rawContent.length, 'Minified length:', contentWithScripts.length);
       elementLoading.textContent = 'Raw length: ' + rawContent.length + ' Minified length: ' + contentWithScripts.length;
     }
-
+    console.log(isFirstPrompt, promptTemplate);
     let prompt = promptTemplate.replace("{title}", document[0].title)
                                .replace("{url}", document[0].url)
                                .replace("{content}", contentWithScripts)
                                .replace("{selection}", document[0].selection);
     prompt += userPrompt;
+    console.log(prompt);
     prompts.push(prompt);
     userPrompts.push(userPrompt);
-    const response = (await chat.sendMessage(prompt)).response;
+    let response = null;
+    if (isFirstPrompt) {
+      response = (await chat.sendMessage( [
+        {
+          inline_data: {
+            mime_type: "image/png",
+            data: currentScreenshotDataUrl.split(',')[1]
+          },
+        },
+        {
+          text: prompt,
+        }
+      ])).response;
+    }
+    else {
+      console.log('chat.sendMessage:', chat);
+      response = (await chat.sendMessage(prompt)).response;
+    }
+      
     console.log('response:', response);
+    console.log(chat);
     let responseText = response.candidates[0].content.parts[0].text;
     // Remove ```javascript and ``` from the response
     responseText = responseText.replace(/```javascript/g, '');
@@ -226,6 +275,9 @@ async function runPrompt(userPrompt) {
   } catch (e) {
     console.log('Prompt failed');
     console.error(e);
+    // Enable the prompt button again
+    buttonPrompt.removeAttribute('disabled');
+    showError(e);
     throw e;
   }
 }
@@ -310,16 +362,16 @@ inputPrompt.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     buttonPrompt.click();
   }
-  if (userPrompts.length > 0) {
+  if (previousPrompts.length > 0) {
     if (event.key === 'ArrowUp') {
-      if (inputPromptReverseIndex < userPrompts.length) {
-        inputPrompt.value = userPrompts[userPrompts.length - 1 - inputPromptReverseIndex];
+      if (inputPromptReverseIndex < previousPrompts.length) {
+        inputPrompt.value = previousPrompts[previousPrompts.length - 1 - inputPromptReverseIndex];
         inputPromptReverseIndex++;
       }
     } else if (event.key === 'ArrowDown') {
       if (inputPromptReverseIndex > 0) {
         inputPromptReverseIndex--;
-        inputPrompt.value = userPrompts[userPrompts.length - 1 - inputPromptReverseIndex];
+        inputPrompt.value = previousPrompts[previousPrompts.length - 1 - inputPromptReverseIndex];
       } else {
         inputPrompt.value = '';
       }
@@ -338,11 +390,27 @@ buttonPrompt.addEventListener('click', async () => {
       temperature: sliderTemperature.value
     };
     initModel(generationConfig);
-    const response = await runPrompt(prompt, generationConfig);
-    await executeAIGeneratedScripts(response);
-    showPrompt(prompt);
-    showResponse(response);
-    savePopupState();
+    initChat((screenshot) => {
+      startChat(screenshot);
+      // Run async functions
+      runPrompt(prompt, generationConfig).then(async (response) => {
+        //await runPrompt(prompt, generationConfig);
+        const delayedExecution2 = response.match(/\/\/DL8/);
+        console.log('delayedExecution2:', delayedExecution2);
+        const delayedExecution = true;
+        if (!delayedExecution)
+          await executeAIGeneratedScripts(response);
+        showPrompt(prompt);
+        showResponse(response);
+        savePopupState();
+        if (delayedExecution) {
+          // execute the script 2 seconds later
+          setTimeout(async () => {
+            await executeAIGeneratedScripts(response);
+          }, 2000);
+        }
+      });
+    });
   } catch (e) {
     showError(e);
   }
@@ -360,7 +428,8 @@ buttonClear.addEventListener('click', () => {
     delete siteData[currentUrl];
     chrome.storage.local.set({siteData: siteData});
   });
-  chat = model.startChat();
+  //chat = model.startChat();
+  chat = null;
   // Delete all chat history elements
   let element = elementPrompt;
   while (element.previousElementSibling) {
